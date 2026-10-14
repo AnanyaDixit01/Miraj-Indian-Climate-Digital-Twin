@@ -1,0 +1,25 @@
+# UI & Visualization
+streamlit
+streamlit-folium
+folium
+plotly
+matplotlib
+
+# Spatial & Geo Data Analysis
+geopandas
+shapely
+
+# Data Processing & NetCDF Parsing Engines
+numpy
+pandas
+xarray
+netCDF4
+scipy
+
+# API Serving & Network
+fastapi
+uvicorn[standard]
+httpx
+
+# Testing Framework
+pytest
