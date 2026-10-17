@@ -11,8 +11,30 @@ import xarray as xr
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.spatial_predictions import mask_region_boundary_local, get_all_states
+from src.visualizations import build_state_heatmap
 
-st.set_page_config(layout="wide", page_title="GIS Analytics Dashboard")
+st.set_page_config(
+    layout="wide",
+    page_title="Miraj Climate Digital Twin",
+    page_icon="🌦️",
+)
+
+st.markdown(
+    """
+    <style>
+        [data-testid="stMetric"] {
+            background: linear-gradient(135deg, rgba(30, 136, 229, 0.08), rgba(0, 172, 193, 0.04));
+            border: 1px solid rgba(128, 128, 128, 0.18);
+            padding: 1rem;
+            border-radius: 0.75rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+            line-height: 1.4;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_resource
@@ -88,7 +110,17 @@ def get_national_data(_full_ds, date_str, var_name):
     return pd.DataFrame(records).dropna(subset=["Mean"])
 
 
-st.title("Interactive GIS Climate Dashboard")
+def reset_filters():
+    """Restore dashboard widgets to their initial selections."""
+    for key in ("state_filter", "date_filter", "variable_filter", "grid_threshold"):
+        st.session_state.pop(key, None)
+
+
+st.title("Miraj · Indian Climate Digital Twin")
+st.caption(
+    "Explore boundary-masked climate conditions across Indian states and union territories. "
+    "This MVP currently uses the bundled seven-day sample dataset."
+)
 
 # Load dataset safely; fails gracefully via st.error + st.stop on missing file or engine error
 ds = load_data()
@@ -103,11 +135,22 @@ VAR_MAP = {
     "Wind Speed (km/h)": {"key": "wind_speed", "colorscale": "Viridis", "units": "km/h"},
 }
 
-st.sidebar.header("Filters")
-state = st.sidebar.selectbox("Select State", states_list)
+st.sidebar.title("Explore climate data")
+st.sidebar.caption("Choose a region, date and climate variable. Every chart and export updates automatically.")
+default_state_index = states_list.index("Karnataka") if "Karnataka" in states_list else 0
+state = st.sidebar.selectbox(
+    "Select State / UT",
+    states_list,
+    index=default_state_index,
+    key="state_filter",
+)
 available_dates = ds.time.dt.strftime("%Y-%m-%d").values
-date = st.sidebar.selectbox("Select Date", available_dates)
-selected_var_label = st.sidebar.selectbox("Variable", list(VAR_MAP.keys()))
+date = st.sidebar.selectbox("Select Date", available_dates, index=len(available_dates) - 1, key="date_filter")
+selected_var_label = st.sidebar.selectbox("Climate variable", list(VAR_MAP.keys()), key="variable_filter")
+st.sidebar.button("Reset filters", on_click=reset_filters, width="stretch")
+st.sidebar.divider()
+st.sidebar.success(f"Dataset online · {len(available_dates)} daily observations")
+st.sidebar.caption(f"Coverage: {available_dates[0]} to {available_dates[-1]}")
 
 var_key = VAR_MAP[selected_var_label]["key"]
 
@@ -140,7 +183,7 @@ with warnings.catch_warnings():
     mean_val = np.nanmean(bbox_data.values) if n_valid > 0 else np.nan
     max_val = np.nanmax(bbox_data.values) if n_valid > 0 else np.nan
 
-    # Calculate trend delta
+    # Calculate change from the immediately preceding observation.
     date_idx = list(available_dates).index(date)
     if date_idx > 0:
         prev_date = available_dates[date_idx - 1]
@@ -169,14 +212,39 @@ with col2.container(border=True):
 with col3.container(border=True):
     st.metric("Active Coverage %", f"{coverage_pct:.1f}%")
 with col4.container(border=True):
-    st.metric("7-Day Trend Delta", f"{trend_delta:+.1f} {units}" if trend_delta != 0 else f"- {units}", delta=f"{trend_delta:+.1f} {units}")
+    delta_display = f"{trend_delta:+.1f} {units}" if date_idx > 0 else "N/A"
+    st.metric(
+        "Change vs previous day",
+        delta_display,
+        delta=delta_display if date_idx > 0 else None,
+    )
 
 st.divider()
 
-# Tabular GIS Analytics
-tab1, tab2 = st.tabs(["National Overview & Leaderboard", "State Grid-Level Explorer"])
+# Spatial and tabular GIS analytics
+tab1, tab2, tab3 = st.tabs([
+    "State Climate Map",
+    "National Overview",
+    "Grid Data & Export",
+])
 
 with tab1:
+    st.subheader(f"Boundary-masked view of {state}")
+    st.caption(
+        "Only grid cells inside the selected administrative boundary are shown. "
+        "Hover over the map to inspect individual values."
+    )
+    state_map = build_state_heatmap(
+        bbox_data,
+        outline_coords,
+        state,
+        selected_var_label,
+        units,
+        VAR_MAP[selected_var_label]["colorscale"],
+    )
+    st.plotly_chart(state_map, theme="streamlit", width="stretch")
+
+with tab2:
     st.subheader("National Overview")
     with st.spinner("Calculating national metrics..."):
         national_df = get_national_data(ds, date, var_key)
@@ -202,7 +270,7 @@ with tab1:
 
         st.dataframe(
             national_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "State / UT": st.column_config.TextColumn("State / UT"),
@@ -219,7 +287,18 @@ with tab1:
             },
         )
 
-with tab2:
+        national_csv = national_df.drop(columns=["Relative Intensity"]).to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download national summary as CSV",
+            data=national_csv,
+            file_name=f"india_{date}_{var_key}_summary.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+    else:
+        st.info("No national data is available for this date and variable.")
+
+with tab3:
     st.subheader(f"Grid-Level Inspection: {state}")
 
     df_masked = masked_data.to_dataframe().reset_index()
@@ -230,7 +309,13 @@ with tab2:
         max_thr = float(df_valid[var_key].max())
 
         if min_thr < max_thr:
-            threshold = st.slider(f"Filter cells by minimum {selected_var_label}", min_value=min_thr, max_value=max_thr, value=min_thr)
+            threshold = st.slider(
+                f"Filter cells by minimum {selected_var_label}",
+                min_value=min_thr,
+                max_value=max_thr,
+                value=min_thr,
+                key="grid_threshold",
+            )
             df_filtered = df_valid[df_valid[var_key] >= threshold]
         else:
             df_filtered = df_valid
@@ -242,7 +327,7 @@ with tab2:
 
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Latitude": st.column_config.NumberColumn("Latitude", format="%.2f°"),
@@ -257,6 +342,7 @@ with tab2:
             data=csv,
             file_name=f"{state}_{date}_{var_key}_grid.csv",
             mime="text/csv",
+            width="stretch",
         )
     else:
         st.info("No valid grid cells found for the selected state and date.")
@@ -268,11 +354,19 @@ st.subheader("Analytics & Temporal Trends")
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
-    st.markdown(f"**7-Day History ({selected_var_label})**")
+    st.markdown(f"**Available history ({selected_var_label})**")
     ts_df = get_time_series(ds, state, var_key)
     fig_ts = px.line(ts_df, x="time", y=var_key, markers=True, title=f"{state} - Mean Trend")
     fig_ts.update_traces(line_color=chart_color, marker_color=chart_color)
-    st.plotly_chart(fig_ts, theme="streamlit", use_container_width=True)
+    fig_ts.update_layout(yaxis_title=f"Mean ({units})", xaxis_title="Date")
+    st.plotly_chart(fig_ts, theme="streamlit", width="stretch")
+    st.download_button(
+        label="Download state time series as CSV",
+        data=ts_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"{state}_{var_key}_time_series.csv",
+        mime="text/csv",
+        width="stretch",
+    )
 
 with chart_col2:
     st.markdown("**Distribution Spread**")
@@ -286,6 +380,6 @@ with chart_col2:
             color_discrete_sequence=[chart_color],
         )
         fig_hist.update_layout(showlegend=False)
-        st.plotly_chart(fig_hist, theme="streamlit", use_container_width=True)
+        st.plotly_chart(fig_hist, theme="streamlit", width="stretch")
     else:
         st.info("Insufficient data for distribution plot.")

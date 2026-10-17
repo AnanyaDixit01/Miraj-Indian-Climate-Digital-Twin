@@ -66,6 +66,14 @@ Launch the interactive GIS dashboard:
 streamlit run app/streamlit_app.py
 ```
 
+The dashboard includes:
+- State/UT, date, and climate-variable filters
+- A boundary-masked state climate heatmap with hover values
+- State mean, peak, coverage, and previous-day change indicators
+- A national state/UT leaderboard and grid-level threshold filter
+- CSV downloads for the national summary, selected grid cells, and state time series
+- Temporal trend and value-distribution charts
+
 ### 4. Run Test Suites
 Execute the spatial analysis, API, and Streamlit test suites:
 ```bash
