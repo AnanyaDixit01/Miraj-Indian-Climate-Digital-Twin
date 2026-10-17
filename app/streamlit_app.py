@@ -11,6 +11,7 @@ import xarray as xr
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.spatial_predictions import mask_region_boundary_local, get_all_states
+from src.climate_alerts import assess_climate_alert
 from src.visualizations import build_state_heatmap
 
 st.set_page_config(
@@ -218,6 +219,22 @@ with col4.container(border=True):
         delta_display,
         delta=delta_display if date_idx > 0 else None,
     )
+
+alert = assess_climate_alert(var_key, mean_val, max_val)
+st.subheader("Climate Risk Screening")
+alert_text = f"**{alert.title}.** {alert.message}  \n**Suggested next step:** {alert.action}"
+if alert.level in {"extreme", "high"}:
+    st.error(alert_text)
+elif alert.level == "elevated":
+    st.warning(alert_text)
+elif alert.level == "unavailable":
+    st.info(alert_text)
+else:
+    st.success(alert_text)
+st.caption(
+    "Screening indicator only—not an official warning. The current dashboard uses synthetic sample data; "
+    "always consult IMD and local authorities for operational decisions."
+)
 
 st.divider()
 

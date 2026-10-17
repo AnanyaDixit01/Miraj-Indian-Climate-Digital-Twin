@@ -1,5 +1,25 @@
 # Indian Climate Digital Twin - GIS Analytics Dashboard
 
+Miraj is evolving toward a three-layer climate digital twin: a gridded-data
+ingestion pipeline, climate analytics and forecasting services, and an
+interactive GIS decision-support dashboard. The current repository is an MVP:
+it decodes IMD rainfall grids, applies administrative-boundary masks, exposes
+dataset health through FastAPI, and presents sample climate observations with
+rule-based risk screening.
+
+```mermaid
+graph LR
+    A[IMD gridded data] --> B[NetCDF archive]
+    B --> C[State boundary masking]
+    C --> D[Climate analytics]
+    D --> E[GIS dashboard and API]
+    E -. future .-> F[Forecasts and uncertainty]
+```
+
+> [!IMPORTANT]
+> The bundled NetCDF files contain synthetic demonstration data. Dashboard risk
+> indicators are screening aids, not official weather warnings or forecasts.
+
 ## Data Sources and Licenses
 - **India States Boundary**: The state boundary GeoJSON data (`data/india_states.geojson`) is sourced from the open-source repository [adarshbiradar/maps-geojson](https://github.com/adarshbiradar/maps-geojson).
 
@@ -73,6 +93,7 @@ The dashboard includes:
 - A national state/UT leaderboard and grid-level threshold filter
 - CSV downloads for the national summary, selected grid cells, and state time series
 - Temporal trend and value-distribution charts
+- Rainfall and high-temperature risk screening with clear operational disclaimers
 
 ### 4. Run Test Suites
 Execute the spatial analysis, API, and Streamlit test suites:

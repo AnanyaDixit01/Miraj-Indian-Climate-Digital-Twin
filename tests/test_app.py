@@ -13,6 +13,8 @@ def test_app_launch_and_interact():
     at = AppTest.from_file(APP_PATH).run(timeout=30)
     assert not at.exception
     assert len(at.get("plotly_chart")) == 3
+    assert any("Climate Risk Screening" in heading.value for heading in at.subheader)
+    assert any("Screening indicator only" in caption.value for caption in at.caption)
 
     download_buttons = at.get("download_button")
     assert {button.label for button in download_buttons} == {
